@@ -2,14 +2,16 @@
 
 import { use } from "react"
 import { notFound } from "next/navigation"
-import { FinancialAnalyticsDashboard } from "@/components/cards"
+import { FinancialAnalyticsDashboard, PatientMonitoringDashboard } from "@/components/cards"
 
 const cardComponentMap: Record<string, React.ComponentType<Record<string, unknown>>> = {
   "financial-analytics-dashboard": FinancialAnalyticsDashboard,
+  "patient-monitoring-dashboard": PatientMonitoringDashboard,
 }
 
 const demoPropsMap: Record<string, Record<string, unknown>> = {
   "financial-analytics-dashboard": {},
+  "patient-monitoring-dashboard": {},
 }
 
 export default function PreviewPage({

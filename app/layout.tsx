@@ -8,8 +8,8 @@ const _jetbrains = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "
 const _outfit = Outfit({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] })
 
 export const metadata: Metadata = {
-  title: 'Meridian — Financial Analytics Dashboard',
-  description: 'Professional financial analytics dashboard with portfolio tracking, performance metrics, risk analysis, and market overview.',
+  title: 'VitalWatch — Patient Monitoring',
+  description: 'Real-time patient monitoring dashboard with vitals, derived clinical metrics, ECG waveform, and risk classification.',
   generator: 'v0.app',
   icons: {
     icon: [

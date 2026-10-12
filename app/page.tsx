@@ -1,5 +1,5 @@
-import { FinancialAnalyticsDashboard } from "@/components/cards"
+import { PatientMonitoringDashboard } from "@/components/cards"
 
 export default function Home() {
-  return <FinancialAnalyticsDashboard />
+  return <PatientMonitoringDashboard />
 }
