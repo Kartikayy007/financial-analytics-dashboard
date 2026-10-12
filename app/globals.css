@@ -2,8 +2,8 @@
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
-
-:root {
+ 
+:root { 
   /* Deep obsidian base with warm charcoal undertone */
   --background: oklch(0.11 0.008 260);
   --foreground: oklch(0.95 0.005 80);
