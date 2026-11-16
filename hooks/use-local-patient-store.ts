@@ -14,8 +14,13 @@ import {
 } from "@/lib/rpm-local-store"
 import type { CareMessage } from "@/lib/rpm-mock-data"
 
+let storeRevision = 0
+
 function subscribe(onStoreChange: () => void) {
-  const handler = () => onStoreChange()
+  const handler = () => {
+    storeRevision += 1
+    onStoreChange()
+  }
   window.addEventListener(STORE_EVENT, handler)
   window.addEventListener("storage", handler)
   return () => {
@@ -29,11 +34,13 @@ function getServerSnapshot() {
 }
 
 function getClientSnapshot() {
-  return Date.now()
+  return storeRevision
 }
 
 export function useLocalPatientStore(patientId: string) {
   const version = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot)
+
+  void version
 
   const messages = loadMessages(patientId)
   const logs = loadLogs(patientId)

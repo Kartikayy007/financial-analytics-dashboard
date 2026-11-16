@@ -54,6 +54,7 @@ import {
   MyDoctorSection,
 } from "@/components/rpm/rpm-extra-sections"
 import { HealthLogSection } from "@/components/rpm/health-log-section"
+import { ClientOnlyChart } from "@/components/rpm/client-only-chart"
 import { useLocalPatientStore } from "@/hooks/use-local-patient-store"
 import type { DoctorProfile, PatientProfile } from "@/lib/rpm-mock-data"
 import { buildSevenDayForecast, computeAnomalyScore } from "@/lib/rpm-ai"
@@ -110,6 +111,7 @@ export type VitalsPortalConfig = {
   backHref?: string
   backLabel?: string
   readOnlyHealthLog?: boolean
+  initialSection?: SectionId
 }
 
 const VitalsPortalConfigContext = React.createContext<VitalsPortalConfig | null>(null)
@@ -278,7 +280,7 @@ function ChartTooltipContent({
         <div key={i} className="flex items-center gap-2 py-0.5">
           <div className="size-2 rounded-full" style={{ backgroundColor: entry.color }} />
           <span className="text-muted-foreground capitalize font-sans">{entry.name}:</span>
-          <span className="font-mono font-bold text-foreground">{entry.value}</span>
+          <span className="font-mono font-bold text-foreground">{entry.value ?? "—"}</span>
         </div>
       ))}
     </div>
@@ -413,7 +415,7 @@ function LiveMonitorSection() {
 
   return (
     <div className={`flex flex-col gap-5 ${SECTION_MIN_H}`}>
-      <motion.div layout className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold px-3 py-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary">
           WHOOP 2.0 · connected
         </span>
@@ -433,7 +435,7 @@ function LiveMonitorSection() {
             {docCount} record{docCount > 1 ? "s" : ""} on file
           </span>
         )}
-      </motion.div>
+      </div>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -583,10 +585,10 @@ function TrendsSection() {
 
   return (
     <div className={`flex flex-col gap-5 ${SECTION_MIN_H}`}>
-      <motion.div layout className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <motion.div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SectionPanel>
           <SectionHeader title="VitalAI anomaly score" subtitle="Model output · 0–100" />
-          <motion.div layout className="space-y-3">
+          <div className="space-y-3">
             <div className="flex items-end gap-3">
               <span className="text-4xl font-bold font-display text-foreground">{anomaly}</span>
               <span className="text-xs text-muted-foreground pb-1">/ 100</span>
@@ -598,12 +600,12 @@ function TrendsSection() {
                   ? "Mild deviation — continue scheduled monitoring."
                   : "Within expected variability for this patient."}
             </p>
-          </motion.div>
+          </div>
         </SectionPanel>
         <SectionPanel>
           <SectionHeader title="7-day HR forecast" subtitle="VitalAI time-series model" />
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
+          <ClientOnlyChart className="h-40 w-full">
+            <ResponsiveContainer width="100%" height={160}>
               <BarChart data={forecast} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
                 <XAxis dataKey="day" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false} />
@@ -617,14 +619,14 @@ function TrendsSection() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ClientOnlyChart>
         </SectionPanel>
       </motion.div>
 
       <SectionPanel>
         <SectionHeader title="Heart Rate & SpO₂" subtitle="Last 60 ingest packets from wearable" />
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
+        <ClientOnlyChart className="h-72 w-full">
+          <ResponsiveContainer width="100%" height={288}>
             <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
               <XAxis dataKey="time" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false} />
@@ -661,14 +663,14 @@ function TrendsSection() {
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </ClientOnlyChart>
       </SectionPanel>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <SectionPanel>
           <SectionHeader title="Blood Pressure" subtitle="Systolic and diastolic (mmHg)" />
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+          <ClientOnlyChart className="h-56 w-full">
+            <ResponsiveContainer width="100%" height={224}>
               <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
                 <XAxis dataKey="time" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false} />
@@ -678,13 +680,13 @@ function TrendsSection() {
                 <Line type="monotone" dataKey="diastolic" name="Diastolic" stroke={C.slate} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </ClientOnlyChart>
         </SectionPanel>
 
         <SectionPanel>
           <SectionHeader title="Core Temperature" subtitle="Body temperature (°C)" />
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+          <ClientOnlyChart className="h-56 w-full">
+            <ResponsiveContainer width="100%" height={224}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
@@ -706,7 +708,7 @@ function TrendsSection() {
                 />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
+          </ClientOnlyChart>
         </SectionPanel>
       </div>
 
@@ -721,12 +723,20 @@ function TrendsSection() {
               </Button>
             )}
           </div>
+        ) : manualBp.length === 0 && weightGlucose.length === 0 && activityBars.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              You have Health Log entries, but no chartable vitals or activity yet. Log BP, weight, or steps to see graphs
+              here.
+            </p>
+            {navigate && (
+              <Button variant="outline" size="sm" onClick={() => navigate("healthlog")}>
+                Open Health Log
+              </Button>
+            )}
+          </div>
         ) : (
-          <CardGrid
-            manualBp={manualBp}
-            weightGlucose={weightGlucose}
-            activityBars={activityBars}
-          />
+          <CardGrid manualBp={manualBp} weightGlucose={weightGlucose} activityBars={activityBars} />
         )}
       </SectionPanel>
     </div>
@@ -759,9 +769,10 @@ function CardGridBody({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       {manualBp.length > 0 && (
-        <div className="h-56">
+        <div className="min-h-[220px]">
           <p className="text-xs font-semibold text-muted-foreground mb-2">Manual blood pressure</p>
-          <ResponsiveContainer width="100%" height="92%">
+          <ClientOnlyChart className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height={200}>
             <LineChart data={manualBp}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
@@ -771,12 +782,14 @@ function CardGridBody({
               <Line type="monotone" dataKey="diastolic" name="Diastolic" stroke={C.slate} strokeWidth={2} dot />
             </LineChart>
           </ResponsiveContainer>
+          </ClientOnlyChart>
         </div>
       )}
       {weightGlucose.length > 0 && (
-        <div className="h-56">
+        <div className="min-h-[220px]">
           <p className="text-xs font-semibold text-muted-foreground mb-2">Weight & glucose</p>
-          <ResponsiveContainer width="100%" height="92%">
+          <ClientOnlyChart className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height={200}>
             <LineChart data={weightGlucose}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
@@ -787,12 +800,14 @@ function CardGridBody({
               <Line yAxisId="g" type="monotone" dataKey="glucoseMgDl" name="Glucose" stroke={C.rose} strokeWidth={2} dot />
             </LineChart>
           </ResponsiveContainer>
+          </ClientOnlyChart>
         </div>
       )}
       {activityBars.length > 0 && (
-        <div className="h-56 lg:col-span-2">
+        <div className="min-h-[220px] lg:col-span-2">
           <p className="text-xs font-semibold text-muted-foreground mb-2">Steps & sleep (logged)</p>
-          <ResponsiveContainer width="100%" height="92%">
+          <ClientOnlyChart className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height={200}>
             <BarChart data={activityBars}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
@@ -803,6 +818,7 @@ function CardGridBody({
               <Bar dataKey="sleepHours" name="Sleep h" fill={C.teal} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          </ClientOnlyChart>
         </div>
       )}
     </div>
@@ -940,7 +956,19 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
     () => buildNavItems(portal.showPatientExtras ?? false, portal.viewerRole),
     [portal.showPatientExtras, portal.viewerRole]
   )
-  const [activeSection, setActiveSection] = useState<SectionId>("monitor")
+  const validSections: SectionId[] = [
+    "monitor",
+    "trends",
+    "healthlog",
+    "alerts",
+    "settings",
+    "careplan",
+    "mydoctor",
+    "devices",
+    "messages",
+  ]
+  const initial = portal.initialSection && validSections.includes(portal.initialSection) ? portal.initialSection : "monitor"
+  const [activeSection, setActiveSection] = useState<SectionId>(initial)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const { alerts, markAlertRead, markAllAlertsRead, snapshot, lastUpdated } = usePatientVitalsContext()

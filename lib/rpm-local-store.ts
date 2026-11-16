@@ -1,4 +1,4 @@
-import { CARE_MESSAGES, getMessagesForPatient, type CareMessage } from "@/lib/rpm-mock-data"
+import { getMessagesForPatient, type CareMessage } from "@/lib/rpm-mock-data"
 
 export const STORE_EVENT = "vitalwatch-store-update"
 const MAX_DOC_BYTES = 1_500_000
@@ -206,4 +206,96 @@ export function logsForCharts(patientId: string) {
     activity: logs.filter((l): l is ActivityLog => l.kind === "activity"),
     documents: logs.filter((l): l is DocumentLog => l.kind === "document"),
   }
+}
+
+export function formatManualBp(patientId: string): string {
+  const m = latestManualVitals(patientId)
+  if (!m?.systolic || !m.diastolic) return "—"
+  return `${m.systolic}/${m.diastolic}`
+}
+
+export function lastPatientMessagePreview(patientId: string): { body: string; sentAt: string } | null {
+  const messages = loadMessages(patientId)
+  const fromPatient = [...messages].reverse().find((m) => m.from === "patient")
+  if (!fromPatient) return null
+  return { body: fromPatient.body, sentAt: fromPatient.sentAt }
+}
+
+const SEEN_LOGS_PREFIX = "vw_doctor_seen_logs_"
+
+export function getDoctorSeenLogCount(patientId: string): number {
+  if (typeof window === "undefined") return 0
+  const raw = sessionStorage.getItem(`${SEEN_LOGS_PREFIX}${patientId}`)
+  return raw ? Number(raw) : 0
+}
+
+export function markDoctorSeenLogCount(patientId: string, count: number) {
+  if (typeof window === "undefined") return
+  sessionStorage.setItem(`${SEEN_LOGS_PREFIX}${patientId}`, String(count))
+}
+
+export type AttentionItem = {
+  patientId: string
+  score: number
+  reason: string
+  href: string
+}
+
+export function buildAttentionQueue(
+  patientIds: string[],
+  risks: Record<string, string>
+): AttentionItem[] {
+  const items: AttentionItem[] = []
+  const now = Date.now()
+
+  for (const patientId of patientIds) {
+    let score = 0
+    const reasons: string[] = []
+    const risk = risks[patientId] ?? "Normal"
+    let href = `/doctor/patients/${encodeURIComponent(patientId)}`
+
+    if (risk === "Critical") {
+      score += 100
+      reasons.push("Critical WHOOP stream")
+    } else if (risk === "At-Risk") {
+      score += 50
+      reasons.push("At-risk vitals")
+    }
+
+    const logCount = loadLogs(patientId).length
+    const seen = getDoctorSeenLogCount(patientId)
+    if (logCount > seen) {
+      score += 20
+      reasons.push(`${logCount - seen} new health log${logCount - seen > 1 ? "s" : ""}`)
+      href += "?tab=healthlog"
+    }
+
+    const docs = countDocumentLogs(patientId)
+    if (docs > 0) {
+      score += 8
+      if (!href.includes("tab=")) href += "?tab=healthlog"
+    }
+
+    const msg = lastPatientMessagePreview(patientId)
+    if (msg) {
+      const age = now - new Date(msg.sentAt).getTime()
+      if (age < 48 * 3_600_000) {
+        score += 10
+        const h = Math.max(1, Math.round(age / 3_600_000))
+        reasons.push(`Patient messaged ${h}h ago`)
+        if (!href.includes("tab=")) href += "?tab=messages"
+      }
+    }
+
+    if (score > 0) {
+      items.push({
+        patientId,
+        score,
+        reason: reasons[0] ?? "Review patient",
+        href,
+      })
+    }
+  }
+
+  return items.sort((a, b) => b.score - a.score).slice(0, 5)
 }
