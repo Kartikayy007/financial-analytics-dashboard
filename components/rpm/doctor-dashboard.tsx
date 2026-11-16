@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { motion } from "motion/react"
 import { Activity, ChevronRight, LogOut, Users } from "lucide-react"
+import { useLocalPatientStore } from "@/hooks/use-local-patient-store"
 import { useRpmPatientRegistry } from "@/hooks/use-rpm-patient-registry"
 import { useRpmSession } from "@/components/rpm/session-provider"
 import { userInitials } from "@/lib/rpm-auth"
@@ -10,6 +12,11 @@ import { Button } from "@/components/ui/button"
 
 const CARD_SHADOW =
   "rgba(14, 63, 126, 0.04) 0px 0px 0px 1px, rgba(42, 51, 69, 0.04) 0px 1px 1px -0.5px"
+
+function PatientLogCount({ patientId }: { patientId: string }) {
+  const { logs } = useLocalPatientStore(patientId)
+  return <>{logs.length}</>
+}
 
 function riskBadge(risk: string) {
   if (risk === "Critical") return "bg-fin-loss/15 text-fin-loss border-fin-loss/40"
@@ -62,9 +69,13 @@ export function DoctorDashboard() {
             <h1 className="text-2xl font-bold font-display">Remote patient roster</h1>
           </div>
           <p className="text-sm text-muted-foreground max-w-2xl">
-            Live vitals from enrolled home-monitoring patients. Select a row to open full waveforms, trends, VitalAI
-            insights, and care plan.
+            WHOOP live streams and patient-logged vitals on this device. Select a row for waveforms, Health Log, and
+            VitalAI insights.
           </p>
+
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl overflow-hidden border border-border/30">
+            <Image src="/images/care-hero.svg" alt="" width={640} height={200} className="w-full h-28 object-cover opacity-90" />
+          </motion.div>
 
           <div
             className="rounded-2xl bg-card/80 overflow-hidden border border-border/30"
@@ -80,6 +91,7 @@ export function DoctorDashboard() {
                   <th className="p-4 font-semibold">SpO₂</th>
                   <th className="p-4 font-semibold">BP</th>
                   <th className="p-4 font-semibold">Last sync</th>
+                  <th className="p-4 font-semibold">Logs</th>
                   <th className="p-4" />
                 </tr>
               </thead>
@@ -101,6 +113,9 @@ export function DoctorDashboard() {
                       <td className="p-4 font-mono">{live ? `${live.systolic}/—` : "—"}</td>
                       <td className="p-4 font-mono text-xs text-muted-foreground">
                         {live ? `${Math.round(live.lastSyncMs / 1000)}s ago` : "—"}
+                      </td>
+                      <td className="p-4 font-mono text-xs">
+                        <PatientLogCount patientId={p.id} />
                       </td>
                       <td className="p-4">
                         <Button variant="ghost" size="sm" asChild>

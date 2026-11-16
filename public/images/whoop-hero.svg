@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" fill="none">
+  <rect width="640" height="360" rx="24" fill="#12141c"/>
+  <rect x="48" y="80" width="200" height="200" rx="100" stroke="#2dd4bf" stroke-width="8" fill="#1a1f2e"/>
+  <circle cx="148" cy="160" r="28" fill="#2dd4bf" opacity="0.35"/>
+  <text x="280" y="150" fill="#e8eaed" font-family="system-ui,sans-serif" font-size="28" font-weight="700">WHOOP 2.0</text>
+  <text x="280" y="185" fill="#9aa3b2" font-family="system-ui,sans-serif" font-size="16">Live heart rate · strain · recovery stream</text>
+  <text x="280" y="220" fill="#5eead4" font-family="monospace" font-size="14">Connected · syncing</text>
+</svg>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { Activity } from "lucide-react"
 import { login } from "@/lib/rpm-auth"
 import { useRpmSession } from "@/components/rpm/session-provider"
@@ -38,8 +39,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <div className="w-full max-w-md space-y-6">
+    <main className="min-h-screen flex items-center justify-center p-6 bg-background relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-48 pointer-events-none opacity-50">
+        <Image src="/images/care-hero.svg" alt="" width={640} height={200} className="w-full h-full object-cover" priority />
+      </div>
+      <div className="w-full max-w-md space-y-6 relative z-10">
         <div className="flex flex-col items-center gap-2 text-foreground">
           <div className="size-12 rounded-2xl bg-primary/15 flex items-center justify-center glow-teal-sm">
             <Activity className="size-6 text-primary" />

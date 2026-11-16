@@ -194,28 +194,16 @@ const users: RpmUserRecord[] = [
   },
 ]
 
-export const DEVICES: DeviceRecord[] = PATIENT_PROFILES.flatMap((p, i) => [
-  {
-    id: `DEV-W-${p.id}`,
-    patientId: p.id,
-    type: "Wearable",
-    model: "VitalBand Pro X2",
-    battery: 72 - i * 8,
-    signal: 88 - i * 5,
-    gatewayOnline: true,
-    lastSyncMs: 8000 + i * 1200,
-  },
-  {
-    id: `DEV-G-${p.id}`,
-    patientId: p.id,
-    type: "Home Gateway",
-    model: "VitalHub Gateway",
-    battery: 100,
-    signal: 95,
-    gatewayOnline: true,
-    lastSyncMs: 3000 + i * 400,
-  },
-])
+export const DEVICES: DeviceRecord[] = PATIENT_PROFILES.map((p, i) => ({
+  id: `WHOOP-${p.id}`,
+  patientId: p.id,
+  type: "Wearable",
+  model: "WHOOP 2.0",
+  battery: 78 - i * 4,
+  signal: 92 - i * 3,
+  gatewayOnline: true,
+  lastSyncMs: 5000 + i * 800,
+}))
 
 export const CARE_PLANS: CarePlan[] = [
   {

@@ -55,8 +55,8 @@ export function usePatientVitals(
     {
       id: 1,
       type: "success",
-      title: "Wearable connected",
-      message: "Vitals stream active from home gateway",
+      title: "WHOOP 2.0 connected",
+      message: "Live vitals stream active",
       time: "just now",
       read: false,
     },

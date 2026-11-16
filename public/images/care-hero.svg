@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="200" viewBox="0 0 640 200" fill="none">
+  <rect width="640" height="200" rx="20" fill="#141824"/>
+  <path d="M120 120c0-33 27-60 60-60s60 27 60 60" stroke="#38bdf8" stroke-width="4" fill="none"/>
+  <path d="M180 120 L200 100 L220 125 L240 95 L260 120" stroke="#2dd4bf" stroke-width="3" fill="none"/>
+  <text x="320" y="95" fill="#f1f5f9" font-family="system-ui,sans-serif" font-size="22" font-weight="700">Remote care at home</text>
+  <text x="320" y="125" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="14">WHOOP stream + your manual health logs</text>
+</svg>

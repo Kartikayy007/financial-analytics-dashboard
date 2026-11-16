@@ -24,6 +24,7 @@ import {
   Cpu,
   LogOut,
   MessageSquare,
+  NotebookPen,
 } from "lucide-react"
 import {
   LineChart,
@@ -52,6 +53,8 @@ import {
   MessagesSection,
   MyDoctorSection,
 } from "@/components/rpm/rpm-extra-sections"
+import { HealthLogSection } from "@/components/rpm/health-log-section"
+import { useLocalPatientStore } from "@/hooks/use-local-patient-store"
 import type { DoctorProfile, PatientProfile } from "@/lib/rpm-mock-data"
 import { buildSevenDayForecast, computeAnomalyScore } from "@/lib/rpm-ai"
 import { Bar, BarChart, Cell, ReferenceLine } from "recharts"
@@ -75,6 +78,8 @@ const C = {
 const SPRING = { type: "spring" as const, stiffness: 400, damping: 32 }
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
 
+const HEALTH_LOG_NAV = { id: "healthlog", label: "Health Log", icon: NotebookPen } as const
+
 const BASE_NAV = [
   { id: "monitor", label: "Live Monitor", icon: Monitor },
   { id: "trends", label: "Vitals Trends", icon: LineChartIcon },
@@ -91,7 +96,7 @@ const PATIENT_NAV = [
 
 type BaseSectionId = (typeof BASE_NAV)[number]["id"]
 type PatientExtraId = (typeof PATIENT_NAV)[number]["id"]
-type SectionId = BaseSectionId | PatientExtraId
+type SectionId = BaseSectionId | PatientExtraId | "healthlog"
 
 export type VitalsPortalConfig = {
   patient: PatientProfile
@@ -104,9 +109,15 @@ export type VitalsPortalConfig = {
   viewerRole: "doctor" | "patient"
   backHref?: string
   backLabel?: string
+  readOnlyHealthLog?: boolean
 }
 
 const VitalsPortalConfigContext = React.createContext<VitalsPortalConfig | null>(null)
+const PortalNavContext = React.createContext<((section: SectionId) => void) | null>(null)
+
+function usePortalNav() {
+  return React.useContext(PortalNavContext)
+}
 
 function useVitalsPortalConfig() {
   const ctx = React.useContext(VitalsPortalConfigContext)
@@ -114,18 +125,15 @@ function useVitalsPortalConfig() {
   return ctx
 }
 
-const DOCTOR_EXTRA_NAV = [
-  PATIENT_NAV[0],
-  PATIENT_NAV[2],
-  PATIENT_NAV[3],
-] as const
+const DOCTOR_EXTRA_NAV = [PATIENT_NAV[0], PATIENT_NAV[2], PATIENT_NAV[3]] as const
 
 function buildNavItems(showPatientExtras: boolean, viewerRole: "doctor" | "patient") {
-  if (!showPatientExtras) return [...BASE_NAV]
+  const core = [BASE_NAV[0], BASE_NAV[1], HEALTH_LOG_NAV, BASE_NAV[2], BASE_NAV[3]]
+  if (!showPatientExtras) return core
   if (viewerRole === "doctor") {
-    return [...BASE_NAV.slice(0, 3), ...DOCTOR_EXTRA_NAV, BASE_NAV[3]]
+    return [BASE_NAV[0], BASE_NAV[1], HEALTH_LOG_NAV, BASE_NAV[2], ...DOCTOR_EXTRA_NAV, BASE_NAV[3]]
   }
-  return [...BASE_NAV.slice(0, 3), ...PATIENT_NAV, BASE_NAV[3]]
+  return [BASE_NAV[0], BASE_NAV[1], HEALTH_LOG_NAV, BASE_NAV[2], ...PATIENT_NAV, BASE_NAV[3]]
 }
 
 function riskStyles(risk: RiskCategory) {
@@ -397,11 +405,35 @@ function NotificationPanel({
 function LiveMonitorSection() {
   const { snapshot } = usePatientVitalsContext()
   const { patient } = useVitalsPortalConfig()
+  const { logs } = useLocalPatientStore(patient.id)
   const rs = riskStyles(snapshot.risk)
   const bedLine = patient.bed ? ` · ${patient.bed}` : ""
+  const latestManual = logs.find((l) => l.kind === "manual_vitals")
+  const docCount = logs.filter((l) => l.kind === "document").length
 
   return (
     <div className={`flex flex-col gap-5 ${SECTION_MIN_H}`}>
+      <motion.div layout className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold px-3 py-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary">
+          WHOOP 2.0 · connected
+        </span>
+        {latestManual?.kind === "manual_vitals" && (
+          <span className="text-[11px] text-muted-foreground font-mono px-3 py-1.5 rounded-full border border-border/40">
+            Last manual:{" "}
+            {latestManual.systolic && latestManual.diastolic
+              ? `BP ${latestManual.systolic}/${latestManual.diastolic}`
+              : latestManual.weightKg
+                ? `${latestManual.weightKg} kg`
+                : "vitals"}{" "}
+            · {new Date(latestManual.recordedAt).toLocaleString()}
+          </span>
+        )}
+        {docCount > 0 && (
+          <span className="text-[11px] text-muted-foreground font-mono px-3 py-1.5 rounded-full border border-border/40">
+            {docCount} record{docCount > 1 ? "s" : ""} on file
+          </span>
+        )}
+      </motion.div>
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -414,19 +446,17 @@ function LiveMonitorSection() {
             </p>
           </div>
         </div>
-        <motion.div
-          animate={snapshot.risk === "Critical" ? { scale: [1, 1.03, 1] } : { scale: 1 }}
-          transition={{ repeat: snapshot.risk === "Critical" ? Infinity : 0, duration: 1.2 }}
-          className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border font-bold text-sm font-display ${rs.badge} ${rs.glow}`}
+        <div
+          className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border font-bold text-sm font-display ${rs.badge} ${snapshot.risk === "Critical" ? rs.glow : ""}`}
         >
           <span className={`size-2.5 rounded-full ${rs.dot} animate-pulse-soft`} />
           Risk: {snapshot.risk}
-        </motion.div>
+        </div>
       </div>
 
       <SectionPanel className={`relative overflow-hidden border ${snapshot.risk === "Critical" ? "border-fin-loss/40" : "border-transparent"}`}>
         <GlowOrb className="w-64 h-64 -top-32 -right-32 bg-primary/10" />
-        <SectionHeader title="Electrocardiogram (Lead II)" subtitle="Live wearable stream · waveform speed tied to heart rate">
+        <SectionHeader title="Electrocardiogram (Lead II)" subtitle="WHOOP 2.0 live stream · waveform speed tied to heart rate">
           <div className="flex items-center gap-2 text-xs font-mono text-primary">
             <Heart className="size-3.5" />
             {snapshot.heartRate} bpm
@@ -501,8 +531,44 @@ function LiveMonitorSection() {
 
 function TrendsSection() {
   const { history, snapshot } = usePatientVitalsContext()
+  const { patient } = useVitalsPortalConfig()
+  const { logs } = useLocalPatientStore(patient.id)
+  const navigate = usePortalNav()
   const anomaly = computeAnomalyScore(snapshot, history)
   const forecast = buildSevenDayForecast(history)
+
+  const manualBp = logs
+    .filter((l): l is import("@/lib/rpm-local-store").ManualVitalsLog => l.kind === "manual_vitals" && Boolean(l.systolic))
+    .slice(0, 14)
+    .reverse()
+    .map((l, i) => ({
+      label: `${i + 1}`,
+      systolic: l.systolic,
+      diastolic: l.diastolic,
+    }))
+
+  const weightGlucose = logs
+    .filter(
+      (l): l is import("@/lib/rpm-local-store").ManualVitalsLog =>
+        l.kind === "manual_vitals" && (Boolean(l.weightKg) || Boolean(l.glucoseMgDl))
+    )
+    .slice(0, 14)
+    .reverse()
+    .map((l, i) => ({
+      label: `${i + 1}`,
+      weightKg: l.weightKg,
+      glucoseMgDl: l.glucoseMgDl,
+    }))
+
+  const activityBars = logs
+    .filter((l): l is import("@/lib/rpm-local-store").ActivityLog => l.kind === "activity")
+    .slice(0, 14)
+    .reverse()
+    .map((l, i) => ({
+      label: `D${i + 1}`,
+      steps: l.steps ?? 0,
+      sleepHours: l.sleepHours ?? 0,
+    }))
   const chartData = history.length > 0 ? history : [
     {
       time: "0",
@@ -643,6 +709,102 @@ function TrendsSection() {
           </div>
         </SectionPanel>
       </div>
+
+      <SectionPanel>
+        <SectionHeader title="Logged health data" subtitle="From Health Log (local device storage)" />
+        {logs.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">Log BP, weight, steps, or upload an ECG PDF to see charts here.</p>
+            {navigate && (
+              <Button variant="outline" size="sm" onClick={() => navigate("healthlog")}>
+                Open Health Log
+              </Button>
+            )}
+          </div>
+        ) : (
+          <CardGrid
+            manualBp={manualBp}
+            weightGlucose={weightGlucose}
+            activityBars={activityBars}
+          />
+        )}
+      </SectionPanel>
+    </div>
+  )
+}
+
+function CardGrid({
+  manualBp,
+  weightGlucose,
+  activityBars,
+}: {
+  manualBp: { label: string; systolic?: number; diastolic?: number }[]
+  weightGlucose: { label: string; weightKg?: number; glucoseMgDl?: number }[]
+  activityBars: { label: string; steps: number; sleepHours: number }[]
+}) {
+  return (
+    <CardGridBody manualBp={manualBp} weightGlucose={weightGlucose} activityBars={activityBars} />
+  )
+}
+
+function CardGridBody({
+  manualBp,
+  weightGlucose,
+  activityBars,
+}: {
+  manualBp: { label: string; systolic?: number; diastolic?: number }[]
+  weightGlucose: { label: string; weightKg?: number; glucoseMgDl?: number }[]
+  activityBars: { label: string; steps: number; sleepHours: number }[]
+}) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {manualBp.length > 0 && (
+        <div className="h-56">
+          <p className="text-xs font-semibold text-muted-foreground mb-2">Manual blood pressure</p>
+          <ResponsiveContainer width="100%" height="92%">
+            <LineChart data={manualBp}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
+              <YAxis tick={{ fontSize: 10, fill: C.tick }} />
+              <Tooltip content={<ChartTooltipContent />} />
+              <Line type="monotone" dataKey="systolic" name="Systolic" stroke={C.amber} strokeWidth={2} dot />
+              <Line type="monotone" dataKey="diastolic" name="Diastolic" stroke={C.slate} strokeWidth={2} dot />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      {weightGlucose.length > 0 && (
+        <div className="h-56">
+          <p className="text-xs font-semibold text-muted-foreground mb-2">Weight & glucose</p>
+          <ResponsiveContainer width="100%" height="92%">
+            <LineChart data={weightGlucose}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
+              <YAxis yAxisId="w" tick={{ fontSize: 10, fill: C.tick }} />
+              <YAxis yAxisId="g" orientation="right" tick={{ fontSize: 10, fill: C.tick }} />
+              <Tooltip content={<ChartTooltipContent />} />
+              <Line yAxisId="w" type="monotone" dataKey="weightKg" name="Weight kg" stroke={C.teal} strokeWidth={2} dot />
+              <Line yAxisId="g" type="monotone" dataKey="glucoseMgDl" name="Glucose" stroke={C.rose} strokeWidth={2} dot />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      {activityBars.length > 0 && (
+        <div className="h-56 lg:col-span-2">
+          <p className="text-xs font-semibold text-muted-foreground mb-2">Steps & sleep (logged)</p>
+          <ResponsiveContainer width="100%" height="92%">
+            <BarChart data={activityBars}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.tick }} />
+              <YAxis tick={{ fontSize: 10, fill: C.tick }} />
+              <Tooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Bar dataKey="steps" name="Steps" fill={C.azure} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="sleepHours" name="Sleep h" fill={C.teal} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }
@@ -664,7 +826,7 @@ function AlertsSection() {
         </SectionHeader>
         <p className="text-sm text-muted-foreground font-sans leading-relaxed">
           Alerts fire when risk moves to <strong className="text-foreground">At-Risk</strong> or{" "}
-          <strong className="text-foreground">Critical</strong>. Streams refresh every 2 seconds from the home gateway.
+          <strong className="text-foreground">Critical</strong>. WHOOP stream refreshes about every 2 seconds; manual vitals appear from your Health Log.
         </p>
       </SectionPanel>
 
@@ -726,15 +888,15 @@ function SettingsSection() {
       </SectionPanel>
 
       <SectionPanel>
-        <SectionHeader title="IoT ingestion" subtitle="Edge gateway and wearable pipeline" />
+        <SectionHeader title="WHOOP + manual entries" subtitle="Single wearable stream and patient-logged data" />
         <ul className="text-sm text-muted-foreground space-y-2 font-sans list-disc pl-5">
-          <li>Wearable packets arrive via home gateway with sub-minute latency.</li>
+          <li>WHOOP 2.0 supplies the live HR and SpO₂ stream on Live Monitor.</li>
+          <li>BP, weight, glucose, documents, and activity are entered under Health Log (stored on this device).</li>
           <li>
-            Derived metrics: HR rolling mean (10 samples), SpO₂ rate of change (%/s), pulse pressure, temperature
-            deviation from {TEMP_BASELINE_C}°C.
+            Derived metrics: HR rolling mean, SpO₂ rate of change, pulse pressure, temperature deviation from{" "}
+            {TEMP_BASELINE_C}°C.
           </li>
-          <li>ECG trace is synthesized from live BPM for bedside review — not a diagnostic strip.</li>
-          <li>VitalAI models run on aggregated vitals for risk, anomaly score, and forecast views.</li>
+          <li>ECG trace follows live BPM for review; uploaded ECG PDFs appear in Health Log records.</li>
         </ul>
       </SectionPanel>
     </div>
@@ -765,6 +927,12 @@ function DevicesPortalSection() {
 function MessagesPortalSection() {
   const { patient, viewerRole } = useVitalsPortalConfig()
   return <MessagesSection patientId={patient.id} viewer={viewerRole === "doctor" ? "doctor" : "patient"} />
+}
+
+function HealthLogPortalSection() {
+  const { patient, readOnlyHealthLog, viewerRole } = useVitalsPortalConfig()
+  const readOnly = readOnlyHealthLog ?? viewerRole === "doctor"
+  return <HealthLogSection patientId={patient.id} readOnly={readOnly} />
 }
 
 function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfig }) {
@@ -807,6 +975,8 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
         return DevicesPortalSection
       case "messages":
         return MessagesPortalSection
+      case "healthlog":
+        return HealthLogPortalSection
       default:
         return LiveMonitorSection
     }
@@ -828,6 +998,7 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
   }, [lastUpdated])
 
   return (
+    <PortalNavContext.Provider value={handleNavigation}>
     <div className="min-h-screen flex flex-col bg-background text-foreground relative overflow-x-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,oklch(0.78_0.16_182_/_0.06),transparent_50%)] pointer-events-none" />
 
@@ -940,10 +1111,10 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
                   <span>{item.label}</span>
                   {isActive && (
                     <motion.div
-                      layoutId="nav-indicator"
                       className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary"
-                      style={{ boxShadow: `0 0 8px 2px oklch(0.78 0.16 182 / 0.3)` }}
-                      transition={SPRING}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.2 }}
                     />
                   )}
                 </button>
@@ -954,17 +1125,9 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
       </nav>
 
       <main className="w-full px-5 lg:px-10 xl:px-14 py-6 lg:py-8 flex-1 relative z-10">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeSection}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: isTransitioning ? 0.3 : 1, y: isTransitioning ? 6 : 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.35, ease: EASE_OUT }}
-          >
-            <ActiveComponent />
-          </motion.div>
-        </AnimatePresence>
+        <div key={activeSection} className={isTransitioning ? "opacity-80 transition-opacity duration-150" : ""}>
+          <ActiveComponent />
+        </div>
       </main>
 
       <footer className="border-t border-border/40 mt-auto relative z-10">
@@ -985,6 +1148,7 @@ function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfi
         </div>
       </footer>
     </div>
+    </PortalNavContext.Provider>
   )
 }
 

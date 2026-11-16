@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { motion } from "motion/react"
 import {
   Activity,
   Calendar,
-  Cpu,
   Link2,
   MessageSquare,
   Pill,
@@ -14,11 +14,8 @@ import {
   Battery,
 } from "lucide-react"
 import type { DoctorProfile, PatientProfile } from "@/lib/rpm-mock-data"
-import {
-  getCarePlan,
-  getDevicesForPatient,
-  getMessagesForPatient,
-} from "@/lib/rpm-mock-data"
+import { getCarePlan, getDevicesForPatient } from "@/lib/rpm-mock-data"
+import { useLocalPatientStore } from "@/hooks/use-local-patient-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,7 +37,7 @@ function Panel({ children, className = "" }: { children: React.ReactNode; classN
 
 export function CarePlanSection({ patientId }: { patientId: string }) {
   const plan = getCarePlan(patientId)
-  const [taken, setTaken] = useState<Record<string, boolean>>({})
+  const { medTaken, toggleMed } = useLocalPatientStore(patientId)
 
   if (!plan) {
     return (
@@ -58,26 +55,30 @@ export function CarePlanSection({ patientId }: { patientId: string }) {
           <h2 className="text-lg font-bold font-display">Medications</h2>
         </div>
         <div className="space-y-3">
-          {plan.medications.map((med) => (
-            <div
-              key={med.id}
-              className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border/40"
-            >
-              <div>
-                <p className="font-semibold text-foreground">{med.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {med.dose} · {med.schedule}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant={taken[med.id] ? "secondary" : "default"}
-                onClick={() => setTaken((t) => ({ ...t, [med.id]: !t[med.id] }))}
+          {plan.medications.map((med) => {
+            const taken = Boolean(medTaken[med.id])
+            return (
+              <div
+                key={med.id}
+                className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border/40"
               >
-                {taken[med.id] ? "Logged" : "Mark taken"}
-              </Button>
-            </div>
-          ))}
+                <div>
+                  <p className="font-semibold text-foreground">{med.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {med.dose} · {med.schedule}
+                  </p>
+                  {taken && (
+                    <p className="text-[10px] text-fin-gain font-mono mt-1">
+                      Logged {new Date(medTaken[med.id]).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <Button size="sm" variant={taken ? "secondary" : "default"} onClick={() => toggleMed(med.id)}>
+                  {taken ? "Logged" : "Mark taken"}
+                </Button>
+              </div>
+            )
+          })}
         </div>
         {plan.medications.length === 0 && (
           <p className="text-sm text-muted-foreground">No active prescriptions.</p>
@@ -94,7 +95,7 @@ export function CarePlanSection({ patientId }: { patientId: string }) {
             {plan.vitalCheckTimes.map((t) => (
               <li key={t} className="flex items-center gap-2">
                 <span className="size-1.5 rounded-full bg-primary" />
-                {t} — wearable auto-sync
+                {t} — WHOOP auto-sync + manual log as needed
               </li>
             ))}
           </ul>
@@ -129,7 +130,7 @@ export function MyDoctorSection({
     return (
       <div className="flex flex-col gap-5 min-h-[calc(100vh-10.5rem)]">
         <Panel>
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-4">
+          <div className="flex gap-4">
             <div className="size-14 rounded-2xl bg-primary/15 flex items-center justify-center">
               <Stethoscope className="size-7 text-primary" />
             </div>
@@ -139,13 +140,13 @@ export function MyDoctorSection({
               <p className="text-sm text-muted-foreground">{doctor.department}</p>
               <p className="text-sm text-muted-foreground">{doctor.hospital}</p>
             </div>
-          </motion.div>
+          </div>
           <p className="text-xs text-muted-foreground mt-4 font-mono">Care team ID: {doctor.linkCode}</p>
         </Panel>
         <Panel>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            You are enrolled in remote monitoring under {doctor.name}. Vitals and alerts are shared with your
-            care team in real time.
+            You are enrolled in remote monitoring under {doctor.name}. WHOOP vitals, Health Log entries, and alerts are
+            shared with your care team.
           </p>
         </Panel>
       </div>
@@ -155,14 +156,13 @@ export function MyDoctorSection({
   return (
     <div className="flex flex-col gap-5 min-h-[calc(100vh-10.5rem)]">
       <Panel>
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+        <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Link2 className="size-5 text-primary" />
             <h2 className="text-lg font-bold font-display">Link care team</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Enter the care team ID from your physician to start sharing vitals with {patient.name}&apos;s
-            clinical record.
+            Enter the care team ID from your physician to share WHOOP and Health Log data.
           </p>
           <div className="space-y-2 max-w-sm">
             <Label htmlFor="link-code">Care team ID</Label>
@@ -188,7 +188,7 @@ export function MyDoctorSection({
               Link physician
             </Button>
           </div>
-        </motion.div>
+        </div>
       </Panel>
     </div>
   )
@@ -196,60 +196,63 @@ export function MyDoctorSection({
 
 export function DevicesSection({ patientId }: { patientId: string }) {
   const devices = getDevicesForPatient(patientId)
+  const whoop = devices[0]
+
+  if (!whoop) {
+    return (
+      <Panel>
+        <p className="text-sm text-muted-foreground">No device paired.</p>
+      </Panel>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5 min-h-[calc(100vh-10.5rem)]">
-      {devices.map((d) => (
-        <Panel key={d.id}>
+      <Panel className="p-0 overflow-hidden">
+        <Image src="/images/whoop-hero.svg" alt="" width={640} height={360} className="w-full h-40 object-cover" />
+        <div className="p-5 lg:p-6 space-y-4">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex gap-3">
-              <div className="size-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                {d.type === "Wearable" ? <Activity className="size-6 text-primary" /> : <Cpu className="size-6 text-primary" />}
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">{d.type}</p>
-                <p className="font-bold text-foreground">{d.model}</p>
-                <p className="text-[10px] font-mono text-muted-foreground mt-1">{d.id}</p>
-              </div>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase">Connected wearable</p>
+              <p className="font-bold text-xl font-display">{whoop.model}</p>
+              <p className="text-[10px] font-mono text-muted-foreground mt-1">{whoop.id}</p>
             </div>
-            <span
-              className={`text-[10px] font-semibold px-2 py-1 rounded-lg border ${
-                d.gatewayOnline ? "border-fin-gain/40 text-fin-gain" : "border-fin-loss/40 text-fin-loss"
-              }`}
-            >
-              {d.gatewayOnline ? "Online" : "Offline"}
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-lg border border-fin-gain/40 text-fin-gain">
+              Online
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-4 mt-5">
+          <p className="text-sm text-muted-foreground">
+            Live HR and SpO₂ appear under Live Monitor. Log blood pressure, weight, ECG PDFs, and more in Health Log.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                 <Battery className="size-3.5" />
                 Battery
               </div>
-              <Progress value={d.battery} className="h-2" />
-              <p className="text-xs font-mono mt-1">{d.battery}%</p>
+              <Progress value={whoop.battery} className="h-2" />
+              <p className="text-xs font-mono mt-1">{whoop.battery}%</p>
             </div>
             <div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                 <Wifi className="size-3.5" />
                 Signal
               </div>
-              <Progress value={d.signal} className="h-2" />
-              <p className="text-xs font-mono mt-1">{d.signal}% RSSI</p>
+              <Progress value={whoop.signal} className="h-2" />
+              <p className="text-xs font-mono mt-1">{whoop.signal}%</p>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-4 font-mono">
-            Last sync · {Math.round(d.lastSyncMs / 1000)}s ago
+          <p className="text-[11px] text-muted-foreground font-mono">
+            Last sync · {Math.round(whoop.lastSyncMs / 1000)}s ago
           </p>
-        </Panel>
-      ))}
+        </div>
+      </Panel>
     </div>
   )
 }
 
 export function MessagesSection({ patientId, viewer }: { patientId: string; viewer: "doctor" | "patient" }) {
-  const seed = getMessagesForPatient(patientId)
-  const [messages, setMessages] = useState(seed)
+  const { messages, sendMessage } = useLocalPatientStore(patientId)
   const [draft, setDraft] = useState("")
 
   return (
@@ -261,8 +264,11 @@ export function MessagesSection({ patientId, viewer }: { patientId: string; view
         </div>
         <div className="flex-1 space-y-3 overflow-auto max-h-[420px] pr-1">
           {messages.map((m) => (
-            <div
+            <motion.div
               key={m.id}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
               className={`rounded-xl px-4 py-3 text-sm max-w-[85%] ${
                 m.from === viewer
                   ? "ml-auto bg-primary/15 text-foreground"
@@ -273,7 +279,7 @@ export function MessagesSection({ patientId, viewer }: { patientId: string; view
               <p className="text-[10px] font-mono mt-2 opacity-60">
                 {new Date(m.sentAt).toLocaleString()}
               </p>
-            </div>
+            </motion.div>
           ))}
         </div>
         <div className="flex gap-2 mt-4">
@@ -283,16 +289,7 @@ export function MessagesSection({ patientId, viewer }: { patientId: string; view
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && draft.trim()) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: `local-${Date.now()}`,
-                    patientId,
-                    from: viewer,
-                    body: draft.trim(),
-                    sentAt: new Date().toISOString(),
-                  },
-                ])
+                sendMessage(draft.trim(), viewer)
                 setDraft("")
               }
             }}
@@ -300,16 +297,7 @@ export function MessagesSection({ patientId, viewer }: { patientId: string; view
           <Button
             onClick={() => {
               if (!draft.trim()) return
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `local-${Date.now()}`,
-                  patientId,
-                  from: viewer,
-                  body: draft.trim(),
-                  sentAt: new Date().toISOString(),
-                },
-              ])
+              sendMessage(draft.trim(), viewer)
               setDraft("")
             }}
           >
