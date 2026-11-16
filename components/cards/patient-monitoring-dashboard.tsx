@@ -20,6 +20,10 @@ import {
   Clock,
   User,
   Stethoscope,
+  ClipboardList,
+  Cpu,
+  LogOut,
+  MessageSquare,
 } from "lucide-react"
 import {
   LineChart,
@@ -33,6 +37,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts"
+import { Button } from "@/components/ui/button"
 import { EcgWaveform } from "@/components/ecg-waveform"
 import type { VitalsAlert } from "@/hooks/use-patient-vitals"
 import {
@@ -41,6 +46,15 @@ import {
 } from "@/components/patient-vitals-provider"
 import { RISK_REFERENCE, type RiskCategory, TEMP_BASELINE_C } from "@/lib/patient-vitals"
 import { AiAssistantSheet } from "@/components/ai-assistant-sheet"
+import {
+  CarePlanSection,
+  DevicesSection,
+  MessagesSection,
+  MyDoctorSection,
+} from "@/components/rpm/rpm-extra-sections"
+import type { DoctorProfile, PatientProfile } from "@/lib/rpm-mock-data"
+import { buildSevenDayForecast, computeAnomalyScore } from "@/lib/rpm-ai"
+import { Bar, BarChart, Cell, ReferenceLine } from "recharts"
 import Link from "next/link"
 
 const CARD_SHADOW =
@@ -61,14 +75,58 @@ const C = {
 const SPRING = { type: "spring" as const, stiffness: 400, damping: 32 }
 const EASE_OUT = [0.16, 1, 0.3, 1] as const
 
-const NAV_ITEMS = [
+const BASE_NAV = [
   { id: "monitor", label: "Live Monitor", icon: Monitor },
   { id: "trends", label: "Vitals Trends", icon: LineChartIcon },
   { id: "alerts", label: "Alerts", icon: Bell },
   { id: "settings", label: "Settings", icon: Settings },
 ] as const
 
-type SectionId = (typeof NAV_ITEMS)[number]["id"]
+const PATIENT_NAV = [
+  { id: "careplan", label: "Care Plan", icon: ClipboardList },
+  { id: "mydoctor", label: "My Doctor", icon: Stethoscope },
+  { id: "devices", label: "Devices", icon: Cpu },
+  { id: "messages", label: "Messages", icon: MessageSquare },
+] as const
+
+type BaseSectionId = (typeof BASE_NAV)[number]["id"]
+type PatientExtraId = (typeof PATIENT_NAV)[number]["id"]
+type SectionId = BaseSectionId | PatientExtraId
+
+export type VitalsPortalConfig = {
+  patient: PatientProfile
+  userInitials: string
+  userDisplayName: string
+  onLogout?: () => void
+  showPatientExtras?: boolean
+  assignedDoctor?: DoctorProfile | null
+  onLinkDoctor?: (code: string) => boolean
+  viewerRole: "doctor" | "patient"
+  backHref?: string
+  backLabel?: string
+}
+
+const VitalsPortalConfigContext = React.createContext<VitalsPortalConfig | null>(null)
+
+function useVitalsPortalConfig() {
+  const ctx = React.useContext(VitalsPortalConfigContext)
+  if (!ctx) throw new Error("VitalsPortalConfig required")
+  return ctx
+}
+
+const DOCTOR_EXTRA_NAV = [
+  PATIENT_NAV[0],
+  PATIENT_NAV[2],
+  PATIENT_NAV[3],
+] as const
+
+function buildNavItems(showPatientExtras: boolean, viewerRole: "doctor" | "patient") {
+  if (!showPatientExtras) return [...BASE_NAV]
+  if (viewerRole === "doctor") {
+    return [...BASE_NAV.slice(0, 3), ...DOCTOR_EXTRA_NAV, BASE_NAV[3]]
+  }
+  return [...BASE_NAV.slice(0, 3), ...PATIENT_NAV, BASE_NAV[3]]
+}
 
 function riskStyles(risk: RiskCategory) {
   switch (risk) {
@@ -338,7 +396,9 @@ function NotificationPanel({
 
 function LiveMonitorSection() {
   const { snapshot } = usePatientVitalsContext()
+  const { patient } = useVitalsPortalConfig()
   const rs = riskStyles(snapshot.risk)
+  const bedLine = patient.bed ? ` · ${patient.bed}` : ""
 
   return (
     <div className={`flex flex-col gap-5 ${SECTION_MIN_H}`}>
@@ -348,9 +408,9 @@ function LiveMonitorSection() {
             <User className="size-7 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-bold font-display text-foreground">Priya Sharma</h2>
+            <h2 className="text-lg font-bold font-display text-foreground">{patient.name}</h2>
             <p className="text-xs text-muted-foreground font-mono">
-              MRN 2026-0847 · Bed ICU-12 · Age 54
+              MRN {patient.mrn}{bedLine} · Age {patient.age}
             </p>
           </div>
         </div>
@@ -366,7 +426,7 @@ function LiveMonitorSection() {
 
       <SectionPanel className={`relative overflow-hidden border ${snapshot.risk === "Critical" ? "border-fin-loss/40" : "border-transparent"}`}>
         <GlowOrb className="w-64 h-64 -top-32 -right-32 bg-primary/10" />
-        <SectionHeader title="Electrocardiogram (Lead II)" subtitle="Real-time simulated waveform · speed tied to heart rate">
+        <SectionHeader title="Electrocardiogram (Lead II)" subtitle="Live wearable stream · waveform speed tied to heart rate">
           <div className="flex items-center gap-2 text-xs font-mono text-primary">
             <Heart className="size-3.5" />
             {snapshot.heartRate} bpm
@@ -441,6 +501,8 @@ function LiveMonitorSection() {
 
 function TrendsSection() {
   const { history, snapshot } = usePatientVitalsContext()
+  const anomaly = computeAnomalyScore(snapshot, history)
+  const forecast = buildSevenDayForecast(history)
   const chartData = history.length > 0 ? history : [
     {
       time: "0",
@@ -455,8 +517,46 @@ function TrendsSection() {
 
   return (
     <div className={`flex flex-col gap-5 ${SECTION_MIN_H}`}>
+      <motion.div layout className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SectionPanel>
+          <SectionHeader title="VitalAI anomaly score" subtitle="Model output · 0–100" />
+          <motion.div layout className="space-y-3">
+            <div className="flex items-end gap-3">
+              <span className="text-4xl font-bold font-display text-foreground">{anomaly}</span>
+              <span className="text-xs text-muted-foreground pb-1">/ 100</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {anomaly >= 70
+                ? "Elevated pattern — review alerts and care plan."
+                : anomaly >= 40
+                  ? "Mild deviation — continue scheduled monitoring."
+                  : "Within expected variability for this patient."}
+            </p>
+          </motion.div>
+        </SectionPanel>
+        <SectionPanel>
+          <SectionHeader title="7-day HR forecast" subtitle="VitalAI time-series model" />
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={forecast} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false} />
+                <YAxis domain={[55, 120]} tick={{ fontSize: 10, fill: C.tick }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltipContent />} />
+                <ReferenceLine y={snapshot.heartRate} stroke={C.azure} strokeDasharray="4 4" />
+                <Bar dataKey="heartRate" name="Forecast HR" radius={[6, 6, 0, 0]}>
+                  {forecast.map((_, i) => (
+                    <Cell key={i} fill={i === 0 ? C.teal : C.slate} fillOpacity={0.85} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionPanel>
+      </motion.div>
+
       <SectionPanel>
-        <SectionHeader title="Heart Rate & SpO₂" subtitle="Last 60 readings (simulated stream)" />
+        <SectionHeader title="Heart Rate & SpO₂" subtitle="Last 60 ingest packets from wearable" />
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
@@ -564,7 +664,7 @@ function AlertsSection() {
         </SectionHeader>
         <p className="text-sm text-muted-foreground font-sans leading-relaxed">
           Alerts fire when risk moves to <strong className="text-foreground">At-Risk</strong> or{" "}
-          <strong className="text-foreground">Critical</strong>. Values update every 2 seconds in demo mode.
+          <strong className="text-foreground">Critical</strong>. Streams refresh every 2 seconds from the home gateway.
         </p>
       </SectionPanel>
 
@@ -626,40 +726,52 @@ function SettingsSection() {
       </SectionPanel>
 
       <SectionPanel>
-        <SectionHeader title="Demo simulation" subtitle="Client vitals simulator + separate WIP REST APIs" />
+        <SectionHeader title="IoT ingestion" subtitle="Edge gateway and wearable pipeline" />
         <ul className="text-sm text-muted-foreground space-y-2 font-sans list-disc pl-5">
-          <li>Vitals use bounded random walk with occasional bias toward abnormal values for demos.</li>
+          <li>Wearable packets arrive via home gateway with sub-minute latency.</li>
           <li>
-            Derived: HR rolling mean (10 samples), SpO₂ rate of change (%/s), pulse pressure, temp deviation from{" "}
-            {TEMP_BASELINE_C}°C.
+            Derived metrics: HR rolling mean (10 samples), SpO₂ rate of change (%/s), pulse pressure, temperature
+            deviation from {TEMP_BASELINE_C}°C.
           </li>
-          <li>ECG waveform is illustrative, not diagnostic.</li>
-          <li>
-            <strong className="text-foreground">Backend APIs (WIP):</strong> in-memory routes under{" "}
-            <code className="text-xs">app/api</code> — see{" "}
-            <Link href="/api/health" className="text-primary hover:underline" target="_blank">
-              /api/health
-            </Link>
-            , demo login at{" "}
-            <Link href="/login" className="text-primary hover:underline">
-              /login
-            </Link>
-            . Live monitor is <em>not</em> wired to the API yet.
-          </li>
+          <li>ECG trace is synthesized from live BPM for bedside review — not a diagnostic strip.</li>
+          <li>VitalAI models run on aggregated vitals for risk, anomaly score, and forecast views.</li>
         </ul>
       </SectionPanel>
     </div>
   )
 }
 
-const sectionComponents: Record<SectionId, React.FC> = {
-  monitor: LiveMonitorSection,
-  trends: TrendsSection,
-  alerts: AlertsSection,
-  settings: SettingsSection,
+function CarePlanPortalSection() {
+  const { patient } = useVitalsPortalConfig()
+  return <CarePlanSection patientId={patient.id} />
 }
 
-function PatientMonitoringDashboardInner() {
+function MyDoctorPortalSection() {
+  const { patient, assignedDoctor, onLinkDoctor } = useVitalsPortalConfig()
+  return (
+    <MyDoctorSection
+      patient={patient}
+      doctor={assignedDoctor ?? null}
+      onLink={(code) => onLinkDoctor?.(code) ?? false}
+    />
+  )
+}
+
+function DevicesPortalSection() {
+  const { patient } = useVitalsPortalConfig()
+  return <DevicesSection patientId={patient.id} />
+}
+
+function MessagesPortalSection() {
+  const { patient, viewerRole } = useVitalsPortalConfig()
+  return <MessagesSection patientId={patient.id} viewer={viewerRole === "doctor" ? "doctor" : "patient"} />
+}
+
+function PatientMonitoringDashboardInner({ portal }: { portal: VitalsPortalConfig }) {
+  const navItems = useMemo(
+    () => buildNavItems(portal.showPatientExtras ?? false, portal.viewerRole),
+    [portal.showPatientExtras, portal.viewerRole]
+  )
   const [activeSection, setActiveSection] = useState<SectionId>("monitor")
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -677,8 +789,29 @@ function PatientMonitoringDashboardInner() {
     [activeSection]
   )
 
-  const ActiveComponent = useMemo(() => sectionComponents[activeSection], [activeSection])
-  const activeNav = useMemo(() => NAV_ITEMS.find((n) => n.id === activeSection), [activeSection])
+  const ActiveComponent = useMemo(() => {
+    switch (activeSection) {
+      case "monitor":
+        return LiveMonitorSection
+      case "trends":
+        return TrendsSection
+      case "alerts":
+        return AlertsSection
+      case "settings":
+        return SettingsSection
+      case "careplan":
+        return CarePlanPortalSection
+      case "mydoctor":
+        return MyDoctorPortalSection
+      case "devices":
+        return DevicesPortalSection
+      case "messages":
+        return MessagesPortalSection
+      default:
+        return LiveMonitorSection
+    }
+  }, [activeSection])
+  const activeNav = useMemo(() => navItems.find((n) => n.id === activeSection), [activeSection, navItems])
   const unreadCount = alerts.filter((n) => !n.read).length
   const rs = riskStyles(snapshot.risk)
 
@@ -728,7 +861,7 @@ function PatientMonitoringDashboardInner() {
             </div>
 
             <div className="flex items-center gap-1">
-              <AiAssistantSheet snapshot={snapshot} />
+              <AiAssistantSheet snapshot={snapshot} patientId={portal.patient.id} />
               <div className="relative">
                 <button
                   onClick={() => setNotificationsOpen((prev) => !prev)}
@@ -763,8 +896,23 @@ function PatientMonitoringDashboardInner() {
               >
                 <Settings className="size-4 text-muted-foreground" />
               </button>
-              <div className="size-9 rounded-xl bg-primary/12 flex items-center justify-center ml-1.5 glow-teal-sm">
-                <span className="text-xs font-bold text-primary font-display">RN</span>
+              {portal.backHref && (
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
+                  <Link href={portal.backHref}>{portal.backLabel ?? "Back"}</Link>
+                </Button>
+              )}
+              {portal.onLogout && (
+                <button
+                  type="button"
+                  onClick={portal.onLogout}
+                  className="p-2.5 rounded-xl hover:bg-accent/50 transition-all duration-200"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-4 text-muted-foreground" />
+                </button>
+              )}
+              <div className="size-9 rounded-xl bg-primary/12 flex items-center justify-center ml-1.5 glow-teal-sm" title={portal.userDisplayName}>
+                <span className="text-xs font-bold text-primary font-display">{portal.userInitials}</span>
               </div>
             </div>
           </div>
@@ -774,7 +922,7 @@ function PatientMonitoringDashboardInner() {
       <nav className="border-b border-border/40 bg-card/40 backdrop-blur-xl sticky top-16 z-20 relative">
         <div className="w-full px-5 lg:px-10 xl:px-14">
           <div className="flex items-center gap-0.5 overflow-x-auto py-1.5 -mb-px scrollbar-none">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const isActive = item.id === activeSection
               const Icon = item.icon
               return (
@@ -840,10 +988,49 @@ function PatientMonitoringDashboardInner() {
   )
 }
 
-export default function PatientMonitoringDashboard() {
+export function VitalsPortal({
+  portal,
+  vitalsOptions,
+}: {
+  portal: VitalsPortalConfig
+  vitalsOptions?: import("@/hooks/use-patient-vitals").UsePatientVitalsOptions
+}) {
   return (
-    <PatientVitalsProvider>
-      <PatientMonitoringDashboardInner />
-    </PatientVitalsProvider>
+    <VitalsPortalConfigContext.Provider value={portal}>
+      <PatientVitalsProvider vitalsOptions={vitalsOptions}>
+        <PatientMonitoringDashboardInner portal={portal} />
+      </PatientVitalsProvider>
+    </VitalsPortalConfigContext.Provider>
+  )
+}
+
+/** @deprecated Use VitalsPortal via /patient or /doctor routes */
+export default function PatientMonitoringDashboard() {
+  const fallbackPatient: PatientProfile = {
+    id: "P-2026-0847",
+    mrn: "2026-0847",
+    name: "Priya Sharma",
+    age: 54,
+    bed: "Home monitoring",
+    doctorId: "D-001",
+    vitalSeed: {
+      heartRate: 78,
+      spo2: 98,
+      systolic: 120,
+      diastolic: 80,
+      temperature: 37,
+      timestamp: Date.now(),
+    },
+  }
+  return (
+    <VitalsPortal
+      portal={{
+        patient: fallbackPatient,
+        userInitials: "PS",
+        userDisplayName: "Priya Sharma",
+        viewerRole: "patient",
+        showPatientExtras: true,
+      }}
+    />
   )
 }

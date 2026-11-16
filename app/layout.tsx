@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { DM_Sans, JetBrains_Mono, Outfit } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { AppProviders } from './providers'
 import './globals.css'
 
 const _dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"] })
@@ -9,7 +10,7 @@ const _outfit = Outfit({ subsets: ["latin"], weight: ["400", "500", "600", "700"
 
 export const metadata: Metadata = {
   title: 'VitalWatch — Patient Monitoring',
-  description: 'Real-time patient monitoring dashboard with vitals, derived clinical metrics, ECG waveform, and risk classification.',
+  description: 'VitalWatch remote patient monitoring — physician and patient portals with live IoT vitals, alerts, and VitalAI insights.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -38,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans antialiased grain">
-        {children}
+        <AppProviders>{children}</AppProviders>
         <Analytics />
       </body>
     </html>

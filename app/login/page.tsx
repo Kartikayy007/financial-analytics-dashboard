@@ -1,10 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { Activity } from "lucide-react"
-import type { LoginResponse } from "@/backend/types"
-import type { ApiResponse } from "@/backend/types"
+import { login } from "@/lib/rpm-auth"
+import { useRpmSession } from "@/components/rpm/session-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,52 +17,41 @@ import {
 } from "@/components/ui/card"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("nurse@vitalwatch.demo")
-  const [password, setPassword] = useState("demo123")
+  const { signIn } = useRpmSession()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<LoginResponse | null>(null)
 
-  const onSubmit = async (e: React.FormEvent) => {
+  const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    setResult(null)
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-      const json: ApiResponse<LoginResponse> = await res.json()
-      if (!json.ok || !json.data) {
-        setError(json.error ?? "Login failed")
-        return
-      }
-      setResult(json.data)
-      sessionStorage.setItem("vitalwatch_demo_token", json.data.token)
-    } catch {
-      setError("Network error")
-    } finally {
+    const session = login(email.trim(), password)
+    if (!session) {
+      setError("Invalid email or password. Contact your care administrator.")
       setLoading(false)
+      return
     }
+    signIn(session)
+    setLoading(false)
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-background">
       <div className="w-full max-w-md space-y-6">
-        <div className="flex items-center justify-center gap-2 text-foreground">
-          <Activity className="size-6 text-primary" />
-          <span className="font-display font-bold text-lg">VitalWatch</span>
-          <span className="text-xs text-muted-foreground border border-border rounded px-2 py-0.5">API demo</span>
+        <div className="flex flex-col items-center gap-2 text-foreground">
+          <div className="size-12 rounded-2xl bg-primary/15 flex items-center justify-center glow-teal-sm">
+            <Activity className="size-6 text-primary" />
+          </div>
+          <span className="font-display font-bold text-xl">VitalWatch</span>
+          <span className="text-sm text-muted-foreground">Remote patient monitoring</span>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Sign in (WIP)</CardTitle>
-            <CardDescription>
-              Calls <code className="text-xs">POST /api/auth/login</code>. Not used to protect the dashboard.
-            </CardDescription>
+            <CardTitle>Sign in</CardTitle>
+            <CardDescription>Physician or patient portal — secure session on this device.</CardDescription>
           </CardHeader>
           <form onSubmit={onSubmit}>
             <CardContent className="space-y-4">
@@ -75,6 +63,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="username"
+                  required
                 />
               </div>
               <div className="space-y-2">
@@ -85,33 +74,18 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
+                  required
                 />
               </div>
               {error && <p className="text-sm text-fin-loss">{error}</p>}
-              {result && (
-                <div className="rounded-lg bg-muted/50 p-3 text-xs font-mono space-y-2 break-all">
-                  <p className="text-muted-foreground font-sans text-[11px]">Token (saved to sessionStorage):</p>
-                  <p>{result.token}</p>
-                  <p className="text-muted-foreground font-sans text-[11px] mt-2">User:</p>
-                  <pre>{JSON.stringify(result.user, null, 2)}</pre>
-                </div>
-              )}
             </CardContent>
-            <CardFooter className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-              <Button type="submit" disabled={loading}>
+            <CardFooter>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Signing in…" : "Sign in"}
-              </Button>
-              <Button variant="ghost" asChild>
-                <Link href="/">Back to monitor</Link>
               </Button>
             </CardFooter>
           </form>
         </Card>
-
-        <p className="text-center text-xs text-muted-foreground">
-          Also try <Link href="/api/health" className="text-primary hover:underline">/api/health</Link> and{" "}
-          <code className="text-[10px]">backend/README.md</code> in the repo.
-        </p>
       </div>
     </main>
   )

@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Sparkles, Send } from "lucide-react"
 import type { VitalsSnapshot } from "@/lib/patient-vitals"
-import type { AiAnalyzeResponse } from "@/backend/types"
-import { apiFetch } from "@/lib/api-client"
-import { Badge } from "@/components/ui/badge"
+import {
+  buildAnalysisFromSnapshot,
+  chatReply,
+  delayAnalysis,
+  type AiAnalyzeResponse,
+} from "@/lib/rpm-ai"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -20,24 +23,22 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 
-const PATIENT_ID = "P-2026-0847"
-
 type ChatMessage = { role: "user" | "assistant"; content: string }
 
 type AiAssistantSheetProps = {
   snapshot: VitalsSnapshot
+  patientId: string
 }
 
-export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
+export function AiAssistantSheet({ snapshot, patientId }: AiAssistantSheetProps) {
   const [open, setOpen] = useState(false)
   const [analysis, setAnalysis] = useState<AiAnalyzeResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
-  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
       content:
-        "VitalWatch mock assistant (WIP). Ask about risk, vitals, or the backend API.",
+        "I'm VitalAI, your clinical decision support assistant. Ask about vitals, risk, medications, or trends.",
     },
   ])
   const [chatInput, setChatInput] = useState("")
@@ -46,29 +47,13 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
 
   const loadAnalysis = useCallback(async () => {
     setAnalysisLoading(true)
-    setAnalysisError(null)
     try {
-      const data = await apiFetch<AiAnalyzeResponse>("/api/ai/analyze", {
-        method: "POST",
-        json: {
-          patientId: PATIENT_ID,
-          vitals: {
-            heartRate: snapshot.heartRate,
-            spo2: snapshot.spo2,
-            systolic: snapshot.systolic,
-            diastolic: snapshot.diastolic,
-            temperature: snapshot.temperature,
-            risk: snapshot.risk,
-          },
-        },
-      })
-      setAnalysis(data)
-    } catch (e) {
-      setAnalysisError(e instanceof Error ? e.message : "Analysis failed")
+      await delayAnalysis()
+      setAnalysis(buildAnalysisFromSnapshot(snapshot, patientId))
     } finally {
       setAnalysisLoading(false)
     }
-  }, [snapshot])
+  }, [snapshot, patientId])
 
   useEffect(() => {
     if (open) {
@@ -89,19 +74,8 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
     setMessages((m) => [...m, { role: "user", content: text }])
     setChatLoading(true)
     try {
-      const data = await apiFetch<{ reply: string }>("/api/ai/chat", {
-        method: "POST",
-        json: { message: text, patientId: PATIENT_ID },
-      })
-      setMessages((m) => [...m, { role: "assistant", content: data.reply }])
-    } catch (e) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content: e instanceof Error ? e.message : "Chat request failed",
-        },
-      ])
+      await delayAnalysis(280)
+      setMessages((m) => [...m, { role: "assistant", content: chatReply(text, patientId) }])
     } finally {
       setChatLoading(false)
     }
@@ -113,13 +87,10 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
         <button
           type="button"
           className="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-xl hover:bg-accent/50 transition-all duration-200 border border-border/40"
-          aria-label="Open AI Assistant"
+          aria-label="Open VitalAI"
         >
           <Sparkles className="size-4 text-primary" />
-          <span className="hidden sm:inline text-[13px] font-semibold text-foreground">AI Assistant</span>
-          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-5 hidden sm:inline-flex">
-            WIP
-          </Badge>
+          <span className="hidden sm:inline text-[13px] font-semibold text-foreground">VitalAI</span>
         </button>
       </SheetTrigger>
 
@@ -127,11 +98,10 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
         <SheetHeader className="p-6 pb-4 border-b border-border/50">
           <SheetTitle className="flex items-center gap-2 font-display">
             <Sparkles className="size-5 text-primary" />
-            AI Assistant
-            <Badge variant="outline" className="text-[10px]">WIP</Badge>
+            VitalAI
           </SheetTitle>
           <SheetDescription>
-            Mock analysis and chat via <code className="text-xs">/api/ai/*</code> — not clinical advice.
+            Clinical decision support from live vitals — for care team review, not a standalone diagnosis.
           </SheetDescription>
         </SheetHeader>
 
@@ -142,9 +112,6 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
           </TabsList>
 
           <TabsContent value="analysis" className="flex-1 overflow-auto px-6 pb-6 mt-4 space-y-4">
-            <div className="rounded-xl bg-chart-3/10 border border-chart-3/20 px-3 py-2 text-[11px] text-muted-foreground">
-              Uses live monitor snapshot + backend mock AI. Monitor still runs client simulation.
-            </div>
             {analysisLoading && (
               <div className="space-y-3">
                 <Skeleton className="h-4 w-full" />
@@ -152,11 +119,11 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
                 <Skeleton className="h-20 w-full" />
               </div>
             )}
-            {analysisError && (
-              <p className="text-sm text-fin-loss">{analysisError}</p>
-            )}
             {analysis && !analysisLoading && (
               <div className="space-y-4">
+                <p className="text-xs font-mono text-muted-foreground">
+                  Model confidence {(analysis.confidence * 100).toFixed(0)}%
+                </p>
                 <p className="text-sm text-foreground leading-relaxed">{analysis.summary}</p>
                 <ul className="text-sm text-muted-foreground space-y-2 list-disc pl-5">
                   {analysis.bullets.map((b, i) => (
@@ -190,7 +157,7 @@ export function AiAssistantSheet({ snapshot }: AiAssistantSheetProps) {
             </ScrollArea>
             <div className="flex gap-2 items-end">
               <Textarea
-                placeholder="Ask about vitals, risk, or APIs…"
+                placeholder="Ask about vitals, risk, or care plan…"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 rows={2}

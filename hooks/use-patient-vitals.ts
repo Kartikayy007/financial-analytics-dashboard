@@ -13,7 +13,13 @@ import {
   tickVitals,
   toHistoryPoint,
   VitalsSnapshot,
+  type TickOptions,
 } from "@/lib/patient-vitals"
+
+export type UsePatientVitalsOptions = {
+  initialVitals?: PatientVitals
+  tickOptions?: TickOptions
+}
 
 const MAX_HISTORY = 60
 
@@ -33,25 +39,30 @@ function formatTimeAgo(ts: number): string {
   return `${min} min ago`
 }
 
-export function usePatientVitals(intervalMs = TICK_INTERVAL_MS) {
+export function usePatientVitals(
+  intervalMs = TICK_INTERVAL_MS,
+  options: UsePatientVitalsOptions = {}
+) {
+  const initial = options.initialVitals ?? createInitialVitals()
+  const tickOptions = options.tickOptions
+
   const [snapshot, setSnapshot] = useState<VitalsSnapshot>(() => {
-    const v = createInitialVitals()
-    const derived = computeDerived(v, null, [v.heartRate], intervalMs / 1000)
-    return buildSnapshot(v, derived)
+    const derived = computeDerived(initial, null, [initial.heartRate], intervalMs / 1000)
+    return buildSnapshot(initial, derived)
   })
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [alerts, setAlerts] = useState<VitalsAlert[]>([
     {
       id: 1,
       type: "success",
-      title: "Monitor connected",
-      message: "Simulated vitals stream active — demo mode",
+      title: "Wearable connected",
+      message: "Vitals stream active from home gateway",
       time: "just now",
       read: false,
     },
   ])
 
-  const prevVitalsRef = useRef<PatientVitals>(createInitialVitals())
+  const prevVitalsRef = useRef<PatientVitals>(initial)
   const hrBufferRef = useRef<number[]>([snapshot.heartRate])
   const lastRiskRef = useRef<RiskCategory>(snapshot.risk)
   const alertIdRef = useRef(2)
@@ -76,7 +87,7 @@ export function usePatientVitals(intervalMs = TICK_INTERVAL_MS) {
   useEffect(() => {
     const tick = () => {
       const prev = prevVitalsRef.current
-      const next = tickVitals(prev)
+      const next = tickVitals(prev, tickOptions ?? {})
       const deltaSeconds = intervalMs / 1000
 
       hrBufferRef.current = [...hrBufferRef.current, next.heartRate].slice(-HR_ROLLING_WINDOW)
